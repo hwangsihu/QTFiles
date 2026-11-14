@@ -11,6 +11,10 @@ jobs:
       matrix:
         arch: [win64, win32]
         
+    outputs:
+      win64: ${{ steps.check.outputs.win64 }}
+      win32: ${{ steps.check.outputs.win32 }}
+      
     steps:
       - name: Get iTunes URL, UUID, and filename
         id: itunes
@@ -25,13 +29,20 @@ jobs:
           echo arch=${arch^^} >> $GITHUB_OUTPUT
           
       - name: Check if there is newer UUID
+        id: check
         run: |
-          [[ "${{ steps.itunes.outputs.uuid }}" != "${{ vars[format('UUID_{0}', steps.itunes.outputs.arch)] }}" ]]
+          if [[ "${{ steps.itunes.outputs.uuid }}" != "${{ vars[format('UUID_{0}', steps.itunes.outputs.arch)] }}" ]]; then
+            echo ${{ matrix.arch }}=true >> $GITHUB_OUTPUT
+          else
+            echo ${{ matrix.arch }}=false >> $GITHUB_OUTPUT
+          fi
           
       - name: Download iTunes installer
+        if: steps.check.outputs[matrix.arch] == 'true'
         run: aria2c -x 16 "${{ steps.itunes.outputs.url }}"
         
       - name: Upload iTunes installer
+        if: steps.check.outputs[matrix.arch] == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: iTunes-${{ matrix.arch }}
@@ -40,6 +51,7 @@ jobs:
           compression-level: 0
           
       - name: Upload iTunes UUID
+        if: steps.check.outputs[matrix.arch] == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: UUID-${{ matrix.arch }}
@@ -48,6 +60,7 @@ jobs:
           
   extract:
     needs: check-and-download
+    if: needs.check-and-download.outputs.win64 == 'true' && needs.check-and-download.outputs.win32 == 'true'
     runs-on: windows-latest
     strategy:
       matrix:
@@ -126,6 +139,7 @@ jobs:
       
   archive:
     needs: [check-and-download, extract]
+    if: needs.check-and-download.outputs.win64 == 'true' && needs.check-and-download.outputs.win32 == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -186,6 +200,7 @@ jobs:
     permissions:
       contents: write
     needs: [check-and-download, extract, archive]
+    if: needs.check-and-download.outputs.win64 == 'true' && needs.check-and-download.outputs.win32 == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Download all archives
